@@ -1,0 +1,7 @@
+[submodule "addons/godot_agents/ai_providers/llama_cpp/godot-cpp"]
+	path = addons/godot_agents/ai_providers/llama_cpp/godot-cpp
+	url = git@github.com:godotengine/godot-cpp.git
+	branch = 4.5
+[submodule "addons/godot_agents/ai_providers/llama_cpp/llama.cpp"]
+	path = addons/godot_agents/ai_providers/llama_cpp/llama.cpp
+	url = git@github.com:ggml-org/llama.cpp.git

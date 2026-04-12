@@ -1,0 +1,27 @@
+[configuration]
+
+entry_symbol = "library_init"
+compatibility_minimum = "4.1"
+reloadable = false
+
+[libraries]
+; Relative paths ensure that our GDExtension can be placed anywhere in the project directory.
+macos.single.debug = "./bin/macos/libllama_cpp_provider.macos.template_debug.dylib"
+macos.double.debug = "./bin/macos/libllama_cpp_provider.macos.template_debug.double.dylib"
+macos.single.release = "./bin/macos/libllama_cpp_provider.macos.template_release.dylib"
+macos.double.release = "./bin/macos/libllama_cpp_provider.macos.template_release.double.dylib"
+
+windows.x86_32.single.debug = "./bin/windows/llama_cpp_provider.windows.template_debug.x86_32.dll"
+windows.x86_32.double.debug = "./bin/windows/llama_cpp_provider.windows.template_debug.x86_32.double.dll"
+windows.x86_32.single.release = "./bin/windows/llama_cpp_provider.windows.template_release.x86_32.dll"
+windows.x86_32.double.release = "./bin/windows/llama_cpp_provider.windows.template_release.x86_32.double.dll"
+
+windows.x86_64.single.debug = "./bin/windows/llama_cpp_provider.windows.template_debug.x86_64.dll"
+windows.x86_64.double.debug = "./bin/windows/llama_cpp_provider.windows.template_debug.x86_64.double.dll"
+windows.x86_64.single.release = "./bin/windows/llama_cpp_provider.windows.template_release.x86_64.dll"
+windows.x86_64.double.release = "./bin/windows/llama_cpp_provider.windows.template_release.x86_64.double.dll"
+
+linux.x86_64.single.debug = "./bin/linux/libllama_cpp_provider.linux.template_debug.x86_64.so"
+linux.x86_64.double.debug = "./bin/linux/libllama_cpp_provider.linux.template_debug.x86_64.double.so"
+linux.x86_64.single.release = "./bin/linux/libllama_cpp_provider.linux.template_release.x86_64.so"
+linux.x86_64.double.release = "./bin/linux/libllama_cpp_provider.linux.template_release.x86_64.double.so"
