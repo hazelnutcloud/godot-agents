@@ -1,2 +1,11 @@
 .zig-wrappers
 __pycache__
+build
+.sconsign.dblite
+compile_commands.json
+.zig-cache
+*.os
+src/gen/
+*.so
+*.dylib
+*.dll

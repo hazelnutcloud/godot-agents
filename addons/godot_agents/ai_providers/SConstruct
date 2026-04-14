@@ -1,89 +1,10 @@
 #!/usr/bin/env python
 import os
-import subprocess
 import sys
 
 from methods import print_error
 
-libname = "llama_cpp_provider"
-
-# ---------------------------------------------------------------------------
-# zig cc wrapper scripts
-# ---------------------------------------------------------------------------
-# CMake (and most build tools) cannot handle a compiler command with a space
-# (e.g. "zig cc").  We generate tiny shell wrappers at configure time so that
-# both CMake and SCons can refer to a single path.
-
-ZIG_WRAPPER_DIR = os.path.abspath(".zig-wrappers")
-
-
-def _write_wrapper(path, inner_cmd):
-    os.makedirs(ZIG_WRAPPER_DIR, exist_ok=True)
-    with open(path, "w") as f:
-        f.write('#!/bin/sh\nexec {} "$@"\n'.format(inner_cmd))
-    os.chmod(path, 0o755)
-
-
-ZIG_CC = os.path.join(ZIG_WRAPPER_DIR, "zig-cc")
-ZIG_CXX = os.path.join(ZIG_WRAPPER_DIR, "zig-c++")
-ZIG_AR = os.path.join(ZIG_WRAPPER_DIR, "zig-ar")
-
-_write_wrapper(ZIG_CC, "zig cc")
-_write_wrapper(ZIG_CXX, "zig c++")
-_write_wrapper(ZIG_AR, "zig ar")
-
-# ---------------------------------------------------------------------------
-# llama.cpp static-library build via CMake
-# ---------------------------------------------------------------------------
-LLAMA_SRC_DIR = os.path.abspath("vendor/llama.cpp")
-LLAMA_BUILD_DIR = os.path.abspath("vendor/llama.cpp/build-static")
-
-
-def build_llama_static():
-    """Configure + build llama.cpp as a set of static libraries using zig cc."""
-    os.makedirs(LLAMA_BUILD_DIR, exist_ok=True)
-
-    cmake_configure = [
-        "cmake",
-        "-S",
-        LLAMA_SRC_DIR,
-        "-B",
-        LLAMA_BUILD_DIR,
-        "-DCMAKE_C_COMPILER={}".format(ZIG_CC),
-        "-DCMAKE_CXX_COMPILER={}".format(ZIG_CXX),
-        "-DCMAKE_AR={}".format(ZIG_AR),
-        "-DBUILD_SHARED_LIBS=OFF",
-        "-DLLAMA_BUILD_TESTS=OFF",
-        "-DLLAMA_BUILD_EXAMPLES=OFF",
-        "-DLLAMA_BUILD_TOOLS=OFF",
-        "-DLLAMA_BUILD_COMMON=OFF",
-        "-DLLAMA_BUILD_SERVER=OFF",
-        "-DCMAKE_BUILD_TYPE=Release",
-    ]
-
-    sentinel = os.path.join(LLAMA_BUILD_DIR, ".llama_built")
-    if not os.path.exists(sentinel):
-        print("-- Configuring llama.cpp (static, zig cc) ...")
-        subprocess.check_call(cmake_configure)
-        print("-- Building llama.cpp ...")
-        ncpu = os.cpu_count() or 4
-        subprocess.check_call(
-            ["cmake", "--build", LLAMA_BUILD_DIR, "--parallel", str(ncpu)]
-        )
-        open(sentinel, "w").close()
-    else:
-        print("-- llama.cpp already built (delete {} to rebuild)".format(sentinel))
-
-
-build_llama_static()
-
-# Paths to the four static libs produced by the build
-LLAMA_STATIC_LIBS = [
-    os.path.join(LLAMA_BUILD_DIR, "src", "libllama.a"),
-    os.path.join(LLAMA_BUILD_DIR, "ggml", "src", "libggml.a"),
-    os.path.join(LLAMA_BUILD_DIR, "ggml", "src", "libggml-base.a"),
-    os.path.join(LLAMA_BUILD_DIR, "ggml", "src", "libggml-cpu.a"),
-]
+libname = "ai_provider"
 
 # ---------------------------------------------------------------------------
 # godot-cpp / SCons environment setup
@@ -98,8 +19,8 @@ localEnv = Environment(tools=["default"], PLATFORM="")
 
 # localEnv["build_profile"] = "build_profile.json"
 
-customs = ["custom.py"]
-customs = [os.path.abspath(path) for path in customs]
+customs = ["#custom.py"]
+customs = [Dir(path).abspath for path in customs]
 
 opts = Variables(customs, ARGUMENTS)
 opts.Update(localEnv)
@@ -117,21 +38,30 @@ Run the following command to download godot-cpp:
 
 # Use zig cc/c++ as the compiler for the extension as well, so the same
 # toolchain is used throughout (avoids ABI mismatches on Linux).
-env["CC"] = ZIG_CC
-env["CXX"] = ZIG_CXX
-env["AR"] = ZIG_AR
-env["RANLIB"] = ZIG_AR  # zig ar handles ranlib indexing
+env["CC"] = "zig cc"
+env["CXX"] = "zig c++"
+env["AR"] = "zig ar"
+env["RANLIB"] = "zig ranlib"
+env["RC"] = "zig rc"
+env["ENV"]["ZIG_GLOBAL_CACHE_DIR"] = "/tmp/zig-cache"
+env["ENV"]["ZIG_LOCAL_CACHE_DIR"] = ".zig-cache"
+env["ENV"]["XDG_CACHE_HOME"] = "/tmp"
 
 env = SConscript("vendor/godot-cpp/SConstruct", {"env": env, "customs": customs})
 
 # ---------------------------------------------------------------------------
 # Extension sources
 # ---------------------------------------------------------------------------
+
+LLAMA_SRC_DIR = Dir("vendor/llama.cpp").abspath
+LLAMA_BUILD_DIR = Dir("build/llama.cpp").abspath
+
 env.Append(
     CPPPATH=[
         "src/",
         os.path.join(LLAMA_SRC_DIR, "include"),  # llama.h / llama-cpp.h
         os.path.join(LLAMA_SRC_DIR, "ggml", "include"),  # ggml.h and friends
+        os.path.join(LLAMA_SRC_DIR, "common"),  # common.h
     ]
 )
 
@@ -146,19 +76,65 @@ if env["target"] in ["editor", "template_debug"]:
     except AttributeError:
         print("Not including class reference as we're targeting a pre-4.3 baseline.")
 
-# ---------------------------------------------------------------------------
-# Link llama.cpp static libs into the final shared library
-# ---------------------------------------------------------------------------
-# SCons wants library names or File nodes for LIBS.  Pass the .a paths
-# directly as File nodes so the linker receives them positionally and
-# SCons tracks them as build dependencies.
-llama_lib_nodes = [File(p) for p in LLAMA_STATIC_LIBS]
 
-env.Append(LIBS=llama_lib_nodes)
+# ---------------------------------------------------------------------------
+# llama.cpp static-library build via CMake
+# ---------------------------------------------------------------------------
 
-# On Linux the linker needs -ldl and -lpthread (pulled in by llama.cpp internals)
-if env["platform"] == "linux":
-    env.Append(LIBS=["dl", "pthread"])
+
+def get_lib_filename(lib_name, dirs):
+    lib_prefix = env.subst("$LIBPREFIX")
+    lib_suffix = env.subst("$LIBSUFFIX")
+    return os.path.join(LLAMA_BUILD_DIR, *dirs, f"{lib_prefix}{lib_name}{lib_suffix}")
+
+
+def get_cmake_toolchain():
+    match env["platform"]:
+        case "linux":
+            return os.path.abspath("cmake/x86_64-linux-gnu.cmake")
+        case "macos":
+            return os.path.abspath("cmake/x86_64-macos-none.cmake")
+        case "windows":
+            return os.path.abspath("cmake/x86_64-windows-gnu.cmake")
+
+
+llama_cpp_libs = [
+    (["common"], "common"),
+    (["src"], "llama"),
+    (["ggml", "src"], "ggml"),
+    (["ggml", "src"], "ggml-base"),
+    (["ggml", "src"], "ggml-cpu"),
+]
+
+
+llama_cpp_targets = [
+    get_lib_filename(lib_name, dirs) for dirs, lib_name in llama_cpp_libs
+]
+
+llama_cpp_lib = env.Command(
+    target=llama_cpp_targets,
+    source=os.path.join(LLAMA_SRC_DIR, "CMakeLists.txt"),
+    action=[
+        (
+            f"cmake -S {LLAMA_SRC_DIR} -B {LLAMA_BUILD_DIR}"
+            f" --toolchain {get_cmake_toolchain()}"
+            " -DBUILD_SHARED_LIBS=OFF"
+            " -DLLAMA_BUILD_TESTS=OFF"
+            " -DLLAMA_BUILD_EXAMPLES=OFF"
+            " -DLLAMA_BUILD_TOOLS=OFF"
+            " -DLLAMA_BUILD_SERVER=OFF"
+            " -DLLAMA_BUILD_COMMON=ON"
+            " -DCMAKE_POSITION_INDEPENDENT_CODE=ON"
+            " -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+            " -DCMAKE_BUILD_TYPE=Release"
+        ),
+        f"cmake --build {LLAMA_BUILD_DIR}",
+    ],
+)
+
+env.Append(LIBPATH=[os.path.dirname(target) for target in llama_cpp_targets])
+env.Append(LIBS=[lib_name for _, lib_name in llama_cpp_libs])
+
 
 # ---------------------------------------------------------------------------
 # Final shared library
@@ -176,7 +152,7 @@ library = env.SharedLibrary(
     source=sources,
 )
 
-copy = env.Install("bin/{}/".format(env["platform"]), library)
+env.Depends(library, llama_cpp_lib)
 
-default_args = [library, copy]
+default_args = [library]
 Default(*default_args)
