@@ -56,12 +56,22 @@ env = SConscript("vendor/godot-cpp/SConstruct", {"env": env, "customs": customs}
 LLAMA_SRC_DIR = Dir("vendor/llama.cpp").abspath
 LLAMA_BUILD_DIR = Dir("build/llama.cpp").abspath
 
+if not (
+    os.path.isdir("vendor/json-schema-validator")
+    and os.listdir("vendor/json-schema-validator")
+):
+    print_error("""vendor/json-schema-validator is not available within this folder.
+Make sure the dependency is present under vendor/json-schema-validator before building.""")
+    sys.exit(1)
+
 env.Append(
     CPPPATH=[
         "src/",
         os.path.join(LLAMA_SRC_DIR, "include"),  # llama.h / llama-cpp.h
         os.path.join(LLAMA_SRC_DIR, "ggml", "include"),  # ggml.h and friends
         os.path.join(LLAMA_SRC_DIR, "common"),  # common.h
+        os.path.join(LLAMA_SRC_DIR, "vendor"),
+        Dir("vendor/json-schema-validator/src").abspath,
     ]
 )
 
@@ -137,6 +147,29 @@ env.Append(LIBS=[lib_name for _, lib_name in llama_cpp_libs])
 
 
 # ---------------------------------------------------------------------------
+# json-schema-validator static-library build via SCons
+# ---------------------------------------------------------------------------
+
+json_schema_validator_sources = Glob("vendor/json-schema-validator/src/*.cpp")
+
+json_schema_validator_env = env.Clone()
+json_schema_validator_env["CCFLAGS"] = [
+    flag
+    for flag in json_schema_validator_env["CCFLAGS"]
+    if flag != "-fno-exceptions"
+]
+json_schema_validator_env.Append(CCFLAGS=["-fexceptions"])
+
+json_schema_validator_lib = json_schema_validator_env.StaticLibrary(
+    os.path.join("build", "json-schema-validator", "nlohmann_json_schema_validator"),
+    source=json_schema_validator_sources,
+)
+
+env.Append(LIBPATH=[Dir("build/json-schema-validator").abspath])
+env.Append(LIBS=["nlohmann_json_schema_validator"])
+
+
+# ---------------------------------------------------------------------------
 # Final shared library
 # ---------------------------------------------------------------------------
 # .dev doesn't inhibit compatibility, so we don't need to key it.
@@ -153,6 +186,7 @@ library = env.SharedLibrary(
 )
 
 env.Depends(library, llama_cpp_lib)
+env.Depends(library, json_schema_validator_lib)
 
 default_args = [library]
 Default(*default_args)
