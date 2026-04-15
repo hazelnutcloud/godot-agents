@@ -154,9 +154,7 @@ json_schema_validator_sources = Glob("vendor/json-schema-validator/src/*.cpp")
 
 json_schema_validator_env = env.Clone()
 json_schema_validator_env["CCFLAGS"] = [
-    flag
-    for flag in json_schema_validator_env["CCFLAGS"]
-    if flag != "-fno-exceptions"
+    flag for flag in json_schema_validator_env["CCFLAGS"] if flag != "-fno-exceptions"
 ]
 json_schema_validator_env.Append(CCFLAGS=["-fexceptions"])
 

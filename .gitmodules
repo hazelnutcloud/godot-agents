@@ -1,10 +1,10 @@
 [submodule "addons/godot_agents/ai_providers/llama_cpp/godot-cpp"]
-	path = addons/godot_agents/ai_providers/vendor/godot-cpp
+	path = addons/godot_agents/vendor/godot-cpp
 	url = git@github.com:godotengine/godot-cpp.git
 	branch = 4.5
 [submodule "addons/godot_agents/ai_providers/llama_cpp/llama.cpp"]
-	path = addons/godot_agents/ai_providers/vendor/llama.cpp
+	path = addons/godot_agents/vendor/llama.cpp
 	url = git@github.com:ggml-org/llama.cpp.git
 [submodule "addons/godot_agents/ai_providers/vendor/json-schema-validator"]
-	path = addons/godot_agents/ai_providers/vendor/json-schema-validator
+	path = addons/godot_agents/vendor/json-schema-validator
 	url = git@github.com:pboettch/json-schema-validator.git
